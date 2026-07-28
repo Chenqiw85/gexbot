@@ -1,0 +1,203 @@
+- generic [active] [ref=e1]:
+  - main [ref=e2]:
+    - region "Dashboard controls" [ref=e3]:
+      - generic [ref=e4]:
+        - img [ref=e5]
+        - generic [ref=e7]:
+          - heading "GEX Proxy Bot" [level=1] [ref=e8]
+          - paragraph [ref=e9]: call-positive / put-negative assumption
+      - generic [ref=e10]:
+        - generic "Ticker selector" [ref=e11]:
+          - button "SPY" [ref=e13] [cursor=pointer]
+          - button "QQQ" [ref=e15] [cursor=pointer]
+          - generic [ref=e16]:
+            - button "AAPL" [ref=e17] [cursor=pointer]
+            - button "Disable AAPL" [ref=e18] [cursor=pointer]:
+              - img [ref=e19]
+          - generic [ref=e22]:
+            - button "DIA" [ref=e23] [cursor=pointer]
+            - button "Disable DIA" [ref=e24] [cursor=pointer]:
+              - img [ref=e25]
+          - generic [ref=e28]:
+            - button "DIVOK" [ref=e29] [cursor=pointer]
+            - button "Disable DIVOK" [ref=e30] [cursor=pointer]:
+              - img [ref=e31]
+          - generic [ref=e34]:
+            - button "DIVTST" [ref=e35] [cursor=pointer]
+            - button "Disable DIVTST" [ref=e36] [cursor=pointer]:
+              - img [ref=e37]
+          - generic [ref=e40]:
+            - button "IWM" [ref=e41] [cursor=pointer]
+            - button "Disable IWM" [ref=e42] [cursor=pointer]:
+              - img [ref=e43]
+          - generic [ref=e46]:
+            - button "ZZZRO" [ref=e47] [cursor=pointer]
+            - button "Disable ZZZRO" [ref=e48] [cursor=pointer]:
+              - img [ref=e49]
+        - generic [ref=e52]:
+          - img [ref=e53]
+          - textbox "Ticker" [ref=e56]
+          - spinbutton "Dividend yield percent" [ref=e57]
+          - button "Register ticker" [disabled] [ref=e58]:
+            - img [ref=e59]
+        - generic [ref=e60]:
+          - button "All" [ref=e61] [cursor=pointer]
+          - button "0DTE" [ref=e62] [cursor=pointer]
+    - region "Refresh controls" [ref=e63]:
+      - generic [ref=e64]:
+        - text: Min DTE
+        - spinbutton "Min DTE" [ref=e65]: "0"
+      - generic [ref=e66]:
+        - text: Max DTE
+        - spinbutton "Max DTE" [ref=e67]: "45"
+      - button "Spot / Recalc" [ref=e68] [cursor=pointer]:
+        - img [ref=e69]
+        - text: Spot / Recalc
+      - button "Full / Partial Chain" [ref=e74] [cursor=pointer]:
+        - img [ref=e75]
+        - text: Full / Partial Chain
+      - button "Checkpoint" [ref=e79] [cursor=pointer]:
+        - img [ref=e80]
+        - text: Checkpoint
+    - region "Data timestamps" [ref=e84]:
+      - generic [ref=e85]:
+        - img [ref=e86]
+        - generic [ref=e89]: Market
+        - strong [ref=e90]: Session closed
+      - generic [ref=e91]:
+        - img [ref=e92]
+        - generic [ref=e95]: Spot Observed
+        - strong [ref=e96]: Jul 27, 07:10:02 PM
+      - generic [ref=e97]:
+        - img [ref=e98]
+        - generic [ref=e101]: Spot Received
+        - strong [ref=e102]: Jul 27, 07:10:02 PM
+      - generic [ref=e103]:
+        - img [ref=e104]
+        - generic [ref=e107]: IV
+        - strong [ref=e108]: unknown (0/20 known)
+      - generic [ref=e109]:
+        - img [ref=e110]
+        - generic [ref=e113]: OI
+        - strong [ref=e114]: unknown (0/20 known)
+      - generic [ref=e115]:
+        - img [ref=e116]
+        - generic [ref=e119]: Chain
+        - strong [ref=e120]: Jul 27, 07:10:02 PM
+      - generic [ref=e121]:
+        - img [ref=e122]
+        - generic [ref=e125]: Analysis
+        - strong [ref=e126]: Jul 27, 07:10:24 PM
+    - region "Key levels" [ref=e127]:
+      - generic [ref=e128]:
+        - generic [ref=e129]: Spot
+        - strong [ref=e130]: "500.00"
+      - generic [ref=e131]:
+        - generic [ref=e132]: Zero Gamma Proxy
+        - strong [ref=e133]: "500.00"
+      - generic [ref=e134]:
+        - generic [ref=e135]: Call Wall Proxy
+        - strong [ref=e136]: "500.00"
+      - generic [ref=e137]:
+        - generic [ref=e138]: Put Wall Proxy
+        - strong [ref=e139]: "500.00"
+      - generic [ref=e140]:
+        - generic [ref=e141]: Net GEX Proxy
+        - strong [ref=e142]: "0"
+    - region "GEX proxy chart" [ref=e143]
+    - generic [ref=e147]:
+      - generic [ref=e148]:
+        - generic [ref=e149]: Strike Rows
+        - table [ref=e151]:
+          - rowgroup [ref=e152]:
+            - row "Strike Call Put Net Call OI Put OI Call Vol Put Vol" [ref=e153]:
+              - columnheader "Strike" [ref=e154]
+              - columnheader "Call" [ref=e155]
+              - columnheader "Put" [ref=e156]
+              - columnheader "Net" [ref=e157]
+              - columnheader "Call OI" [ref=e158]
+              - columnheader "Put OI" [ref=e159]
+              - columnheader "Call Vol" [ref=e160]
+              - columnheader "Put Vol" [ref=e161]
+          - rowgroup [ref=e162]:
+            - row "480 196.1K -196.1K 0 120 120 12 12" [ref=e163]:
+              - cell "480" [ref=e164]
+              - cell "196.1K" [ref=e165]
+              - cell "-196.1K" [ref=e166]
+              - cell "0" [ref=e167]
+              - cell "120" [ref=e168]
+              - cell "120" [ref=e169]
+              - cell "12" [ref=e170]
+              - cell "12" [ref=e171]
+            - row "490 634.1K -634.1K 0 110 110 11 11" [ref=e172]:
+              - cell "490" [ref=e173]
+              - cell "634.1K" [ref=e174]
+              - cell "-634.1K" [ref=e175]
+              - cell "0" [ref=e176]
+              - cell "110" [ref=e177]
+              - cell "110" [ref=e178]
+              - cell "11" [ref=e179]
+              - cell "11" [ref=e180]
+            - row "500 966.9K -966.9K 0 100 100 10 10" [ref=e181]:
+              - cell "500" [ref=e182]
+              - cell "966.9K" [ref=e183]
+              - cell "-966.9K" [ref=e184]
+              - cell "0" [ref=e185]
+              - cell "100" [ref=e186]
+              - cell "100" [ref=e187]
+              - cell "10" [ref=e188]
+              - cell "10" [ref=e189]
+            - row "510 688.5K -688.5K 0 110 110 11 11" [ref=e190]:
+              - cell "510" [ref=e191]
+              - cell "688.5K" [ref=e192]
+              - cell "-688.5K" [ref=e193]
+              - cell "0" [ref=e194]
+              - cell "110" [ref=e195]
+              - cell "110" [ref=e196]
+              - cell "11" [ref=e197]
+              - cell "11" [ref=e198]
+            - row "520 251.1K -251.1K 0 120 120 12 12" [ref=e199]:
+              - cell "520" [ref=e200]
+              - cell "251.1K" [ref=e201]
+              - cell "-251.1K" [ref=e202]
+              - cell "0" [ref=e203]
+              - cell "120" [ref=e204]
+              - cell "120" [ref=e205]
+              - cell "12" [ref=e206]
+              - cell "12" [ref=e207]
+      - generic [ref=e208]:
+        - generic [ref=e209]:
+          - generic [ref=e210]: History Replay
+          - generic [ref=e211]:
+            - textbox "History date" [ref=e212]: 2026-07-27
+            - button "Load" [ref=e213] [cursor=pointer]:
+              - img [ref=e214]
+              - text: Load
+          - generic [ref=e219]: No runs loaded
+        - generic [ref=e220]:
+          - generic [ref=e221]: Warnings & Model
+          - generic [ref=e222]:
+            - generic [ref=e223]:
+              - term [ref=e224]: Pricing
+              - definition [ref=e225]: black_scholes_v1
+            - generic [ref=e226]:
+              - term [ref=e227]: Model
+              - definition [ref=e228]: black_scholes_v1.0.0
+            - generic [ref=e229]:
+              - term [ref=e230]: Calendar
+              - definition [ref=e231]: nyse_rules_v3
+            - generic [ref=e232]:
+              - term [ref=e233]: Option Policy
+              - definition [ref=e234]: option_close_policy_v1
+            - generic [ref=e235]:
+              - term [ref=e236]: Rate
+              - definition [ref=e237]: 5.00% (configured)
+            - generic [ref=e238]:
+              - term [ref=e239]: Dividend
+              - definition [ref=e240]: 0.00% (configured)
+            - generic [ref=e241]:
+              - term [ref=e242]: Assumption
+              - definition [ref=e243]: call_positive_put_negative
+          - list [ref=e244]:
+            - listitem [ref=e245]: expired_contracts_excluded
+  - alert [ref=e246]

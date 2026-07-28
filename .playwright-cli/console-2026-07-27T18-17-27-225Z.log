@@ -1,0 +1,1 @@
+[  645051ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8000/api/v1/gex-proxy/latest?ticker=SPY&scope=all&include_rows=true:0

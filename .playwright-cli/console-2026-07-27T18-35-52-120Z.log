@@ -1,0 +1,1 @@
+[  121058ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_RESET @ http://localhost:8000/api/v1/gex-proxy/latest?ticker=DIA&scope=all&include_rows=true:0

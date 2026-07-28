@@ -1,0 +1,144 @@
+- generic [active] [ref=e1]:
+  - main [ref=e2]:
+    - region "Dashboard controls" [ref=e3]:
+      - generic [ref=e4]:
+        - img [ref=e5]
+        - generic [ref=e7]:
+          - heading "GEX Proxy Bot" [level=1] [ref=e8]
+          - paragraph [ref=e9]: call-positive / put-negative assumption
+      - generic [ref=e10]:
+        - generic [ref=e11]:
+          - button "SPY" [ref=e12] [cursor=pointer]
+          - button "QQQ" [ref=e13] [cursor=pointer]
+        - generic [ref=e14]:
+          - img [ref=e15]
+          - textbox "Ticker" [ref=e18]
+        - generic [ref=e19]:
+          - button "All" [ref=e20] [cursor=pointer]
+          - button "0DTE" [ref=e21] [cursor=pointer]
+    - region "Refresh controls" [ref=e22]:
+      - generic [ref=e23]:
+        - text: Min DTE
+        - spinbutton "Min DTE" [ref=e24]: "0"
+      - generic [ref=e25]:
+        - text: Max DTE
+        - spinbutton "Max DTE" [ref=e26]: "45"
+      - button "Spot / Recalc" [ref=e27] [cursor=pointer]:
+        - img [ref=e28]
+        - text: Spot / Recalc
+      - button "Full / Partial Chain" [ref=e33] [cursor=pointer]:
+        - img [ref=e34]
+        - text: Full / Partial Chain
+      - button "Checkpoint" [disabled] [ref=e38]:
+        - img [ref=e39]
+        - text: Checkpoint
+    - region "Data timestamps" [ref=e43]:
+      - generic [ref=e44]:
+        - img [ref=e45]
+        - generic [ref=e48]: Spot
+        - strong [ref=e49]: Jul 27, 02:15:19 PM
+      - generic [ref=e50]:
+        - img [ref=e51]
+        - generic [ref=e54]: IV
+        - strong [ref=e55]: unknown
+      - generic [ref=e56]:
+        - img [ref=e57]
+        - generic [ref=e60]: OI
+        - strong [ref=e61]: unknown
+      - generic [ref=e62]:
+        - img [ref=e63]
+        - generic [ref=e66]: Chain
+        - strong [ref=e67]: Jul 27, 02:03:06 PM
+      - generic [ref=e68]:
+        - img [ref=e69]
+        - generic [ref=e72]: Analysis
+        - strong [ref=e73]: Jul 27, 02:15:26 PM
+    - region "Key levels" [ref=e74]:
+      - generic [ref=e75]:
+        - generic [ref=e76]: Spot
+        - strong [ref=e77]: "500.00"
+      - generic [ref=e78]:
+        - generic [ref=e79]: Zero Gamma Proxy
+        - strong [ref=e80]: "500.00"
+      - generic [ref=e81]:
+        - generic [ref=e82]: Call Wall Proxy
+        - strong [ref=e83]: "500.00"
+      - generic [ref=e84]:
+        - generic [ref=e85]: Put Wall Proxy
+        - strong [ref=e86]: "500.00"
+      - generic [ref=e87]:
+        - generic [ref=e88]: Net GEX Proxy
+        - strong [ref=e89]: "0"
+    - region "GEX proxy chart" [ref=e90]
+    - generic [ref=e94]:
+      - generic [ref=e95]:
+        - generic [ref=e96]: Strike Rows
+        - table [ref=e98]:
+          - rowgroup [ref=e99]:
+            - row "Strike Call Put Net Call OI Put OI" [ref=e100]:
+              - columnheader "Strike" [ref=e101]
+              - columnheader "Call" [ref=e102]
+              - columnheader "Put" [ref=e103]
+              - columnheader "Net" [ref=e104]
+              - columnheader "Call OI" [ref=e105]
+              - columnheader "Put OI" [ref=e106]
+          - rowgroup [ref=e107]:
+            - row "480 538.8K -538.8K 0 360 360" [ref=e108]:
+              - cell "480" [ref=e109]
+              - cell "538.8K" [ref=e110]
+              - cell "-538.8K" [ref=e111]
+              - cell "0" [ref=e112]
+              - cell "360" [ref=e113]
+              - cell "360" [ref=e114]
+            - row "490 1.13M -1.13M 0 330 330" [ref=e115]:
+              - cell "490" [ref=e116]
+              - cell "1.13M" [ref=e117]
+              - cell "-1.13M" [ref=e118]
+              - cell "0" [ref=e119]
+              - cell "330" [ref=e120]
+              - cell "330" [ref=e121]
+            - row "500 8.59M -8.59M 0 300 300" [ref=e122]:
+              - cell "500" [ref=e123]
+              - cell "8.59M" [ref=e124]
+              - cell "-8.59M" [ref=e125]
+              - cell "0" [ref=e126]
+              - cell "300" [ref=e127]
+              - cell "300" [ref=e128]
+            - row "510 1.22M -1.22M 0 330 330" [ref=e129]:
+              - cell "510" [ref=e130]
+              - cell "1.22M" [ref=e131]
+              - cell "-1.22M" [ref=e132]
+              - cell "0" [ref=e133]
+              - cell "330" [ref=e134]
+              - cell "330" [ref=e135]
+            - row "520 655.3K -655.3K 0 360 360" [ref=e136]:
+              - cell "520" [ref=e137]
+              - cell "655.3K" [ref=e138]
+              - cell "-655.3K" [ref=e139]
+              - cell "0" [ref=e140]
+              - cell "360" [ref=e141]
+              - cell "360" [ref=e142]
+      - generic [ref=e143]:
+        - generic [ref=e144]:
+          - generic [ref=e145]: History Replay
+          - generic [ref=e146]:
+            - textbox "History date" [ref=e147]: 2026-07-27
+            - button "Load" [ref=e148] [cursor=pointer]:
+              - img [ref=e149]
+              - text: Load
+          - generic [ref=e154]: No runs loaded
+        - generic [ref=e155]:
+          - generic [ref=e156]: Warnings & Model
+          - generic [ref=e157]:
+            - generic [ref=e158]:
+              - term [ref=e159]: Model
+              - definition [ref=e160]: black_scholes_v1.0.0
+            - generic [ref=e161]:
+              - term [ref=e162]: Rate
+              - definition [ref=e163]: 5.00% (configured)
+            - generic [ref=e164]:
+              - term [ref=e165]: Dividend
+              - definition [ref=e166]: 0.00% (configured)
+          - list [ref=e167]:
+            - listitem [ref=e168]: No warnings
+  - alert [ref=e169]

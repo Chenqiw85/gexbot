@@ -1,0 +1,75 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: gexbot
+      POSTGRES_PASSWORD: gexbot
+      POSTGRES_DB: gexbot
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/app/db/schema.sql:/docker-entrypoint-initdb.d/001-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gexbot -d gexbot"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ./backend
+    environment:
+      DATABASE_URL: postgresql://gexbot:gexbot@postgres:5432/gexbot
+      GEXBOT_PROVIDER: ${GEXBOT_PROVIDER:-mock}
+      TRADIER_BASE_URL: ${TRADIER_BASE_URL:-https://api.tradier.com/v1}
+      TRADIER_TOKEN: ${TRADIER_TOKEN:-}
+      GEXBOT_TICKERS: ${GEXBOT_TICKERS:-SPY,QQQ}
+      DEFAULT_RISK_FREE_RATE: ${DEFAULT_RISK_FREE_RATE:-0.05}
+      DEFAULT_DIVIDEND_YIELD: ${DEFAULT_DIVIDEND_YIELD:-0.0}
+      DEFAULT_MIN_DTE: ${DEFAULT_MIN_DTE:-0}
+      DEFAULT_MAX_DTE: ${DEFAULT_MAX_DTE:-45}
+      DEFAULT_MAX_EXPIRATIONS: ${DEFAULT_MAX_EXPIRATIONS:-12}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+      AUTO_ENSURE_SCHEMA: "false"
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  scheduler:
+    build:
+      context: ./backend
+    command: ["python", "-m", "app.scheduler.worker"]
+    environment:
+      DATABASE_URL: postgresql://gexbot:gexbot@postgres:5432/gexbot
+      GEXBOT_PROVIDER: ${GEXBOT_PROVIDER:-mock}
+      TRADIER_BASE_URL: ${TRADIER_BASE_URL:-https://api.tradier.com/v1}
+      TRADIER_TOKEN: ${TRADIER_TOKEN:-}
+      GEXBOT_TICKERS: ${GEXBOT_TICKERS:-SPY,QQQ}
+      DEFAULT_RISK_FREE_RATE: ${DEFAULT_RISK_FREE_RATE:-0.05}
+      DEFAULT_DIVIDEND_YIELD: ${DEFAULT_DIVIDEND_YIELD:-0.0}
+      DEFAULT_MIN_DTE: ${DEFAULT_MIN_DTE:-0}
+      DEFAULT_MAX_DTE: ${DEFAULT_MAX_DTE:-45}
+      DEFAULT_MAX_EXPIRATIONS: ${DEFAULT_MAX_EXPIRATIONS:-12}
+      CHAIN_REFRESH_SECONDS: ${CHAIN_REFRESH_SECONDS:-900}
+      SPOT_REFRESH_SECONDS: ${SPOT_REFRESH_SECONDS:-15}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+      AUTO_ENSURE_SCHEMA: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ./frontend
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:

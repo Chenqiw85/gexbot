@@ -1,0 +1,7 @@
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+gexbot_backend.egg-info
+tests
+.DS_Store

@@ -1,0 +1,157 @@
+- generic [active] [ref=e1]:
+  - main [ref=e2]:
+    - region "Dashboard controls" [ref=e3]:
+      - generic [ref=e4]:
+        - img [ref=e5]
+        - generic [ref=e7]:
+          - heading "GEX Proxy Bot" [level=1] [ref=e8]
+          - paragraph [ref=e9]: call-positive / put-negative assumption
+      - generic [ref=e10]:
+        - generic [ref=e11]:
+          - button "AAPL" [ref=e12] [cursor=pointer]
+          - button "DIA" [ref=e13] [cursor=pointer]
+          - button "IWM" [ref=e14] [cursor=pointer]
+          - button "QQQ" [ref=e15] [cursor=pointer]
+          - button "SPY" [ref=e16] [cursor=pointer]
+        - generic [ref=e17]:
+          - img [ref=e18]
+          - textbox "Ticker" [ref=e21]
+          - button "Register ticker" [disabled] [ref=e22]:
+            - img [ref=e23]
+        - generic [ref=e24]:
+          - button "All" [ref=e25] [cursor=pointer]
+          - button "0DTE" [ref=e26] [cursor=pointer]
+    - region "Refresh controls" [ref=e27]:
+      - generic [ref=e28]:
+        - text: Min DTE
+        - spinbutton "Min DTE" [ref=e29]: "0"
+      - generic [ref=e30]:
+        - text: Max DTE
+        - spinbutton "Max DTE" [ref=e31]: "45"
+      - button "Spot / Recalc" [ref=e32] [cursor=pointer]:
+        - img [ref=e33]
+        - text: Spot / Recalc
+      - button "Full / Partial Chain" [ref=e38] [cursor=pointer]:
+        - img [ref=e39]
+        - text: Full / Partial Chain
+      - button "Checkpoint" [ref=e43] [cursor=pointer]:
+        - img [ref=e44]
+        - text: Checkpoint
+    - region "Data timestamps" [ref=e48]:
+      - generic [ref=e49]:
+        - img [ref=e50]
+        - generic [ref=e53]: Market
+        - strong [ref=e54]: Options open
+      - generic [ref=e55]:
+        - img [ref=e56]
+        - generic [ref=e59]: Spot Observed
+        - strong [ref=e60]: Jul 27, 03:57:43 PM
+      - generic [ref=e61]:
+        - img [ref=e62]
+        - generic [ref=e65]: Spot Received
+        - strong [ref=e66]: Jul 27, 03:57:43 PM
+      - generic [ref=e67]:
+        - img [ref=e68]
+        - generic [ref=e71]: IV
+        - strong [ref=e72]: unknown
+      - generic [ref=e73]:
+        - img [ref=e74]
+        - generic [ref=e77]: OI
+        - strong [ref=e78]: unknown
+      - generic [ref=e79]:
+        - img [ref=e80]
+        - generic [ref=e83]: Chain
+        - strong [ref=e84]: Jul 27, 03:54:15 PM
+      - generic [ref=e85]:
+        - img [ref=e86]
+        - generic [ref=e89]: Analysis
+        - strong [ref=e90]: Jul 27, 03:59:46 PM
+    - region "Key levels" [ref=e91]:
+      - generic [ref=e92]:
+        - generic [ref=e93]: Spot
+        - strong [ref=e94]: "500.00"
+      - generic [ref=e95]:
+        - generic [ref=e96]: Zero Gamma Proxy
+        - strong [ref=e97]: "500.00"
+      - generic [ref=e98]:
+        - generic [ref=e99]: Call Wall Proxy
+        - strong [ref=e100]: "500.00"
+      - generic [ref=e101]:
+        - generic [ref=e102]: Put Wall Proxy
+        - strong [ref=e103]: "500.00"
+      - generic [ref=e104]:
+        - generic [ref=e105]: Net GEX Proxy
+        - strong [ref=e106]: "0"
+    - region "GEX proxy chart" [ref=e107]
+    - generic [ref=e111]:
+      - generic [ref=e112]:
+        - generic [ref=e113]: Strike Rows
+        - table [ref=e115]:
+          - rowgroup [ref=e116]:
+            - row "Strike Call Put Net Call OI Put OI" [ref=e117]:
+              - columnheader "Strike" [ref=e118]
+              - columnheader "Call" [ref=e119]
+              - columnheader "Put" [ref=e120]
+              - columnheader "Net" [ref=e121]
+              - columnheader "Call OI" [ref=e122]
+              - columnheader "Put OI" [ref=e123]
+          - rowgroup [ref=e124]:
+            - row "480 534.8K -534.8K 0 360 360" [ref=e125]:
+              - cell "480" [ref=e126]
+              - cell "534.8K" [ref=e127]
+              - cell "-534.8K" [ref=e128]
+              - cell "0" [ref=e129]
+              - cell "360" [ref=e130]
+              - cell "360" [ref=e131]
+            - row "490 1.13M -1.13M 0 330 330" [ref=e132]:
+              - cell "490" [ref=e133]
+              - cell "1.13M" [ref=e134]
+              - cell "-1.13M" [ref=e135]
+              - cell "0" [ref=e136]
+              - cell "330" [ref=e137]
+              - cell "330" [ref=e138]
+            - row "500 156.52M -156.52M 0 300 300" [ref=e139]:
+              - cell "500" [ref=e140]
+              - cell "156.52M" [ref=e141]
+              - cell "-156.52M" [ref=e142]
+              - cell "0" [ref=e143]
+              - cell "300" [ref=e144]
+              - cell "300" [ref=e145]
+            - row "510 1.22M -1.22M 0 330 330" [ref=e146]:
+              - cell "510" [ref=e147]
+              - cell "1.22M" [ref=e148]
+              - cell "-1.22M" [ref=e149]
+              - cell "0" [ref=e150]
+              - cell "330" [ref=e151]
+              - cell "330" [ref=e152]
+            - row "520 650.9K -650.9K 0 360 360" [ref=e153]:
+              - cell "520" [ref=e154]
+              - cell "650.9K" [ref=e155]
+              - cell "-650.9K" [ref=e156]
+              - cell "0" [ref=e157]
+              - cell "360" [ref=e158]
+              - cell "360" [ref=e159]
+      - generic [ref=e160]:
+        - generic [ref=e161]:
+          - generic [ref=e162]: History Replay
+          - generic [ref=e163]:
+            - textbox "History date" [ref=e164]: 2026-07-27
+            - button "Load" [ref=e165] [cursor=pointer]:
+              - img [ref=e166]
+              - text: Load
+          - generic [ref=e171]: No runs loaded
+        - generic [ref=e172]:
+          - generic [ref=e173]: Warnings & Model
+          - generic [ref=e174]:
+            - generic [ref=e175]:
+              - term [ref=e176]: Model
+              - definition [ref=e177]: black_scholes_v1.0.0
+            - generic [ref=e178]:
+              - term [ref=e179]: Rate
+              - definition [ref=e180]: 5.00% (configured)
+            - generic [ref=e181]:
+              - term [ref=e182]: Dividend
+              - definition [ref=e183]: 0.00% (configured)
+          - list [ref=e184]:
+            - listitem [ref=e185]: No warnings
+  - alert [ref=e186]

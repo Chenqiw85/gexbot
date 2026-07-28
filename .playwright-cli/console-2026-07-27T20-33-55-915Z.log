@@ -1,0 +1,1 @@
+[ 3840104ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8000/api/v1/market/status?ticker=SPY:0

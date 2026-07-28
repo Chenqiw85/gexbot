@@ -1,0 +1,1 @@
+"""Database assets and adapters."""

@@ -1,0 +1,100 @@
+- generic [active] [ref=e1]:
+  - main [ref=e2]:
+    - region "Dashboard controls" [ref=e3]:
+      - generic [ref=e4]:
+        - img [ref=e5]
+        - generic [ref=e7]:
+          - heading "GEX Proxy Bot" [level=1] [ref=e8]
+          - paragraph [ref=e9]: call-positive / put-negative assumption
+      - generic [ref=e10]:
+        - generic [ref=e11]:
+          - button "SPY" [ref=e12] [cursor=pointer]
+          - button "QQQ" [ref=e13] [cursor=pointer]
+        - generic [ref=e14]:
+          - img [ref=e15]
+          - textbox "Ticker" [ref=e18]
+        - generic [ref=e19]:
+          - button "All" [ref=e20] [cursor=pointer]
+          - button "0DTE" [ref=e21] [cursor=pointer]
+    - region "Refresh controls" [ref=e22]:
+      - generic [ref=e23]:
+        - text: Min DTE
+        - spinbutton "Min DTE" [ref=e24]: "0"
+      - generic [ref=e25]:
+        - text: Max DTE
+        - spinbutton "Max DTE" [ref=e26]: "45"
+      - button "Spot / Recalc" [ref=e27] [cursor=pointer]:
+        - img [ref=e28]
+        - text: Spot / Recalc
+      - button "Full / Partial Chain" [ref=e33] [cursor=pointer]:
+        - img [ref=e34]
+        - text: Full / Partial Chain
+      - button "Checkpoint" [disabled] [ref=e38]:
+        - img [ref=e39]
+        - text: Checkpoint
+    - region "Data timestamps" [ref=e43]:
+      - generic [ref=e44]:
+        - img [ref=e45]
+        - generic [ref=e48]: Spot
+        - strong [ref=e49]: unknown
+      - generic [ref=e50]:
+        - img [ref=e51]
+        - generic [ref=e54]: IV
+        - strong [ref=e55]: unknown
+      - generic [ref=e56]:
+        - img [ref=e57]
+        - generic [ref=e60]: OI
+        - strong [ref=e61]: unknown
+      - generic [ref=e62]:
+        - img [ref=e63]
+        - generic [ref=e66]: Chain
+        - strong [ref=e67]: unknown
+      - generic [ref=e68]:
+        - img [ref=e69]
+        - generic [ref=e72]: Analysis
+        - strong [ref=e73]: unknown
+    - region "Key levels" [ref=e74]:
+      - generic [ref=e75]:
+        - generic [ref=e76]: Spot
+        - strong [ref=e77]: n/a
+      - generic [ref=e78]:
+        - generic [ref=e79]: Zero Gamma Proxy
+        - strong [ref=e80]: n/a
+      - generic [ref=e81]:
+        - generic [ref=e82]: Call Wall Proxy
+        - strong [ref=e83]: n/a
+      - generic [ref=e84]:
+        - generic [ref=e85]: Put Wall Proxy
+        - strong [ref=e86]: n/a
+      - generic [ref=e87]:
+        - generic [ref=e88]: Net GEX Proxy
+        - strong [ref=e89]: n/a
+    - region "GEX proxy chart" [ref=e90]
+    - generic [ref=e94]:
+      - generic [ref=e95]:
+        - generic [ref=e96]: Strike Rows
+        - table [ref=e98]:
+          - rowgroup [ref=e99]:
+            - row "Strike Call Put Net Call OI Put OI" [ref=e100]:
+              - columnheader "Strike" [ref=e101]
+              - columnheader "Call" [ref=e102]
+              - columnheader "Put" [ref=e103]
+              - columnheader "Net" [ref=e104]
+              - columnheader "Call OI" [ref=e105]
+              - columnheader "Put OI" [ref=e106]
+          - rowgroup
+      - generic [ref=e107]:
+        - generic [ref=e108]: Warnings & Model
+        - generic [ref=e109]:
+          - generic [ref=e110]:
+            - term [ref=e111]: Model
+            - definition [ref=e112]: unknown
+          - generic [ref=e113]:
+            - term [ref=e114]: Rate
+            - definition [ref=e115]: unknown
+          - generic [ref=e116]:
+            - term [ref=e117]: Dividend
+            - definition [ref=e118]: unknown
+        - list [ref=e119]:
+          - listitem [ref=e120]: No warnings
+  - alert [ref=e121]
