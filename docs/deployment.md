@@ -11,6 +11,16 @@ Docker Compose runs four services:
 
 The scheduler is intentionally separate from the API so API restarts do not duplicate scheduled jobs. In PostgreSQL mode, scheduler jobs acquire bucketed leases in `scheduler_locks`; chain-capture lock keys include ticker, DTE range, max-expiration limit, and the chain-refresh bucket. High-frequency analysis writes also use bucketed `analysis_runs.idempotency_key` values so a retry in the same refresh interval returns the existing run before fetching spot instead of creating a duplicate analysis row.
 
+### Connection pool and process isolation
+
+The API and scheduler are separate processes and each own an independent `psycopg_pool.ConnectionPool`. Every repository operation, and every scheduler lease attempt, checks out its own connection for one unit of work; no long-lived connection is shared across request threads. Multi-statement operations run inside a single `connection.transaction()` on that one connection so transaction boundaries are preserved. Pool sizing is configured with `DB_POOL_MIN_SIZE` (default 1), `DB_POOL_MAX_SIZE` (default 5), and `DB_POOL_TIMEOUT_SECONDS` (default 10). Each pool is opened at startup and closed cleanly on shutdown (the scheduler handles `SIGTERM`/`SIGINT`).
+
+Scheduler lease acquisition is a single atomic `INSERT ... ON CONFLICT (lock_key) DO UPDATE ... WHERE (lease expired OR same owner) RETURNING owner_id`, so two owners contending for a brand-new lock key cannot both win — the caller acquired the lease only if the returned owner is itself.
+
+### Exposure model
+
+Compose binds the `api` and `web` published ports to `${GEXBOT_BIND_HOST:-127.0.0.1}` (localhost by default) and does not publish PostgreSQL to the host at all — it is reachable only on the internal Docker network. Change `GEXBOT_BIND_HOST` deliberately for LAN/VPN/reverse-proxy access, and only expose beyond localhost behind authentication. An optional `GEXBOT_API_KEY` gates mutating endpoints when set; the bundled browser UI does not send it, so it is intended for API-only/reverse-proxy use. See the README "Security & Exposure Model" section.
+
 Compose initializes the database from `backend/app/db/schema.sql`. Runtime schema initialization is disabled in Compose via `AUTO_ENSURE_SCHEMA=false` to avoid startup-time DDL lock waits. Boolean settings such as `AUTO_ENSURE_SCHEMA` accept `true`, `false`, `1`, `0`, `yes`, `no`, `on`, or `off`; any other value fails startup.
 
 `GEXBOT_TICKERS` seeds enabled rows in `underlyings` when the API or scheduler starts. Custom tickers added with `POST /api/v1/tickers` or the dashboard ticker input are persisted in the same table, and the scheduler reads enabled tickers from that registry on each loop. `PATCH /api/v1/tickers/{ticker}` updates `enabled` and/or `dividend_yield`; disabling a ticker from the API or dashboard preserves its historical rows while removing it from API ticker lists and future scheduler loops. API `dividend_yield` values are decimal fractions from 0 to 1; the dashboard `Div %` field accepts percent input and converts it before saving.

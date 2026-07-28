@@ -1,13 +1,13 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
-import psycopg
-
+from app.db.pool import build_pool
 from app.domain.calendar import NY, policy_for_ticker
 from app.domain.gex import (
     AnalysisInput,
@@ -44,53 +44,88 @@ class PersistedAnalysisRun:
 
 
 class PostgresRepository:
-    def __init__(self, connection) -> None:
-        self.connection = connection
+    """Repository backed by a ``psycopg_pool.ConnectionPool``.
+
+    A fresh connection is checked out for each repository operation (unit of
+    work); no connection is shared across request threads. Operations that run
+    multiple statements wrap them in a single ``connection.transaction()`` block
+    so their transaction boundary is preserved on one connection.
+
+    For unit tests, a fake connection object may be passed directly and it is
+    reused verbatim (no pool involved).
+    """
+
+    def __init__(self, connection=None, *, pool=None) -> None:
+        self._raw_connection = connection
+        self._pool = pool
 
     @classmethod
-    def connect(cls, database_url: str) -> "PostgresRepository":
-        return cls(psycopg.connect(database_url, autocommit=True))
+    def connect(
+        cls,
+        database_url: str,
+        *,
+        min_size: int = 1,
+        max_size: int = 5,
+        timeout: float = 10.0,
+    ) -> "PostgresRepository":
+        pool = build_pool(
+            database_url,
+            min_size=min_size,
+            max_size=max_size,
+            timeout=timeout,
+        )
+        return cls(pool=pool)
+
+    @classmethod
+    def from_pool(cls, pool) -> "PostgresRepository":
+        return cls(pool=pool)
+
+    @property
+    def connection(self):
+        """Backward-compatible access to a directly-injected connection.
+
+        Only valid when the repository was built from a raw connection (tests).
+        Pool-backed repositories must use :meth:`checkout` instead.
+        """
+        if self._raw_connection is None:
+            raise RuntimeError("pool-backed repository has no single shared connection; use checkout()")
+        return self._raw_connection
+
+    @contextmanager
+    def checkout(self) -> Iterator[Any]:
+        """Yield a connection for one unit of work.
+
+        Pool-backed: checks a connection out and returns it to the pool on exit.
+        Raw-connection (test) mode: yields the injected connection unchanged.
+        """
+        if self._raw_connection is not None:
+            yield self._raw_connection
+            return
+        if self._pool is None:
+            raise RuntimeError("repository is not connected to a database")
+        with self._pool.connection() as conn:
+            yield conn
+
+    def close(self) -> None:
+        if self._pool is not None:
+            self._pool.close()
 
     def ensure_schema(self) -> None:
         schema = Path(__file__).with_name("schema.sql").read_text()
-        self.connection.execute(schema)
-        self.connection.commit()
+        with self.checkout() as conn:
+            conn.execute(schema)
 
     def ensure_underlying(self, ticker: str, dividend_yield: float) -> None:
         normalized = ticker.upper()
-        self.connection.execute(
-            """
-            INSERT INTO underlyings(
-              ticker, asset_type, enabled, dividend_yield, contract_multiplier_default,
-              option_close_policy
-            )
-            VALUES (%s, %s, true, %s, 100, %s)
-            ON CONFLICT (ticker) DO NOTHING
-            """,
-            (
-                normalized,
-                _asset_type_for_ticker(normalized),
-                dividend_yield,
-                policy_for_ticker(normalized).name,
-            ),
-        )
-        self.connection.commit()
-
-    def upsert_underlying(self, ticker: str, dividend_yield: float) -> AppTicker:
-        normalized = ticker.upper()
-        with self.connection.transaction():
-            row = self.connection.execute(
+        with self.checkout() as conn:
+            conn.execute(
                 """
                 INSERT INTO underlyings(
                   ticker, asset_type, enabled, dividend_yield, contract_multiplier_default,
                   option_close_policy
                 )
                 VALUES (%s, %s, true, %s, 100, %s)
-                ON CONFLICT (ticker) DO UPDATE
-                SET dividend_yield = EXCLUDED.dividend_yield,
-                    enabled = true,
-                    updated_at = now()
-                RETURNING ticker, dividend_yield, enabled
+                ON CONFLICT (ticker) DO NOTHING
                 """,
                 (
                     normalized,
@@ -98,7 +133,32 @@ class PostgresRepository:
                     dividend_yield,
                     policy_for_ticker(normalized).name,
                 ),
-            ).fetchone()
+            )
+
+    def upsert_underlying(self, ticker: str, dividend_yield: float) -> AppTicker:
+        normalized = ticker.upper()
+        with self.checkout() as conn:
+            with conn.transaction():
+                row = conn.execute(
+                    """
+                    INSERT INTO underlyings(
+                      ticker, asset_type, enabled, dividend_yield, contract_multiplier_default,
+                      option_close_policy
+                    )
+                    VALUES (%s, %s, true, %s, 100, %s)
+                    ON CONFLICT (ticker) DO UPDATE
+                    SET dividend_yield = EXCLUDED.dividend_yield,
+                        enabled = true,
+                        updated_at = now()
+                    RETURNING ticker, dividend_yield, enabled
+                    """,
+                    (
+                        normalized,
+                        _asset_type_for_ticker(normalized),
+                        dividend_yield,
+                        policy_for_ticker(normalized).name,
+                    ),
+                ).fetchone()
         return _app_ticker_from_row(row)
 
     def update_underlying(
@@ -112,140 +172,148 @@ class PostgresRepository:
         normalized = ticker.upper()
         insert_enabled = True if enabled is None else enabled
         insert_dividend_yield = default_dividend_yield if dividend_yield is None else dividend_yield
-        with self.connection.transaction():
-            row = self.connection.execute(
-                """
-                INSERT INTO underlyings(
-                  ticker, asset_type, enabled, dividend_yield, contract_multiplier_default,
-                  option_close_policy
-                )
-                VALUES (%s, %s, %s, %s, 100, %s)
-                ON CONFLICT (ticker) DO UPDATE
-                SET enabled = COALESCE(%s, underlyings.enabled),
-                    dividend_yield = COALESCE(%s, underlyings.dividend_yield),
-                    updated_at = now()
-                RETURNING ticker, dividend_yield, enabled
-                """,
-                (
-                    normalized,
-                    _asset_type_for_ticker(normalized),
-                    insert_enabled,
-                    insert_dividend_yield,
-                    policy_for_ticker(normalized).name,
-                    enabled,
-                    dividend_yield,
-                ),
-            ).fetchone()
+        with self.checkout() as conn:
+            with conn.transaction():
+                row = conn.execute(
+                    """
+                    INSERT INTO underlyings(
+                      ticker, asset_type, enabled, dividend_yield, contract_multiplier_default,
+                      option_close_policy
+                    )
+                    VALUES (%s, %s, %s, %s, 100, %s)
+                    ON CONFLICT (ticker) DO UPDATE
+                    SET enabled = COALESCE(%s, underlyings.enabled),
+                        dividend_yield = COALESCE(%s, underlyings.dividend_yield),
+                        updated_at = now()
+                    RETURNING ticker, dividend_yield, enabled
+                    """,
+                    (
+                        normalized,
+                        _asset_type_for_ticker(normalized),
+                        insert_enabled,
+                        insert_dividend_yield,
+                        policy_for_ticker(normalized).name,
+                        enabled,
+                        dividend_yield,
+                    ),
+                ).fetchone()
         return _app_ticker_from_row(row)
 
     def list_underlyings(self) -> list[AppTicker]:
-        rows = self.connection.execute(
-            """
-            SELECT ticker, dividend_yield, enabled
-            FROM underlyings
-            WHERE enabled = true
-            ORDER BY ticker
-            """
-        ).fetchall()
+        with self.checkout() as conn:
+            rows = conn.execute(
+                """
+                SELECT ticker, dividend_yield, enabled
+                FROM underlyings
+                WHERE enabled = true
+                ORDER BY ticker
+                """
+            ).fetchall()
         return [_app_ticker_from_row(row) for row in rows]
 
     def save_chain_capture(self, capture: ChainCapture) -> int:
-        with self.connection.transaction():
-            chain_id = self.connection.execute(
-                """
-                INSERT INTO chain_captures(
-                  ticker, source, status, min_dte, max_dte, requested_expirations,
-                  chain_captured_at, provider_received_at, warnings
-                )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                RETURNING id
-                """,
-                (
-                    capture.ticker,
-                    capture.source,
-                    capture.status,
-                    capture.min_dte,
-                    capture.max_dte,
-                    capture.requested_expirations,
-                    capture.chain_captured_at,
-                    capture.provider_received_at,
-                    list(capture.warnings),
-                ),
-            ).fetchone()[0]
-            for expiration in capture.expiration_captures:
-                expiration_id = self.connection.execute(
+        with self.checkout() as conn:
+            with conn.transaction():
+                chain_id = conn.execute(
                     """
-                    INSERT INTO expiration_captures(
-                      chain_capture_id, expiration_date, underlying_close_at,
-                      option_last_trade_at, status, provider_observed_at, error_message
+                    INSERT INTO chain_captures(
+                      ticker, source, status, min_dte, max_dte, requested_expirations,
+                      chain_captured_at, provider_received_at, warnings
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING id
                     """,
                     (
-                        chain_id,
-                        expiration.expiration_date,
-                        expiration.underlying_close_at,
-                        expiration.option_last_trade_at,
-                        expiration.status,
-                        expiration.provider_observed_at,
-                        expiration.error_message,
+                        capture.ticker,
+                        capture.source,
+                        capture.status,
+                        capture.min_dte,
+                        capture.max_dte,
+                        capture.requested_expirations,
+                        capture.chain_captured_at,
+                        capture.provider_received_at,
+                        list(capture.warnings),
                     ),
                 ).fetchone()[0]
-                for contract in expiration.contracts:
-                    self.connection.execute(
+                for expiration in capture.expiration_captures:
+                    expiration_id = conn.execute(
                         """
-                        INSERT INTO option_contract_captures(
-                          expiration_capture_id, option_symbol, strike, option_type,
-                          contract_multiplier, open_interest, oi_observed_date, volume,
-                          implied_volatility, iv_observed_at, vendor_delta, vendor_gamma,
-                          vendor_theta, vendor_vega, bid, ask, last, mark
+                        INSERT INTO expiration_captures(
+                          chain_capture_id, expiration_date, underlying_close_at,
+                          option_last_trade_at, status, provider_observed_at, error_message
                         )
-                        VALUES (
-                          %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                          %s, %s, %s, %s, %s, %s, %s, %s
-                        )
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        RETURNING id
                         """,
                         (
-                            expiration_id,
-                            contract.option_symbol,
-                            contract.strike,
-                            contract.option_type.value,
-                            contract.contract_multiplier,
-                            contract.open_interest,
-                            contract.oi_observed_date,
-                            contract.volume,
-                            contract.implied_volatility,
-                            contract.iv_observed_at,
-                            contract.vendor_delta,
-                            contract.vendor_gamma,
-                            contract.vendor_theta,
-                            contract.vendor_vega,
-                            contract.bid,
-                            contract.ask,
-                            contract.last,
-                            contract.mark,
+                            chain_id,
+                            expiration.expiration_date,
+                            expiration.underlying_close_at,
+                            expiration.option_last_trade_at,
+                            expiration.status,
+                            expiration.provider_observed_at,
+                            expiration.error_message,
                         ),
-                    )
-            return int(chain_id)
+                    ).fetchone()[0]
+                    for contract in expiration.contracts:
+                        conn.execute(
+                            """
+                            INSERT INTO option_contract_captures(
+                              expiration_capture_id, option_symbol, strike, option_type,
+                              contract_multiplier, open_interest, oi_observed_date, volume,
+                              implied_volatility, iv_observed_at, vendor_delta, vendor_gamma,
+                              vendor_theta, vendor_vega, bid, ask, last, mark
+                            )
+                            VALUES (
+                              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                              %s, %s, %s, %s, %s, %s, %s, %s
+                            )
+                            """,
+                            (
+                                expiration_id,
+                                contract.option_symbol,
+                                contract.strike,
+                                contract.option_type.value,
+                                contract.contract_multiplier,
+                                contract.open_interest,
+                                contract.oi_observed_date,
+                                contract.volume,
+                                contract.implied_volatility,
+                                contract.iv_observed_at,
+                                contract.vendor_delta,
+                                contract.vendor_gamma,
+                                contract.vendor_theta,
+                                contract.vendor_vega,
+                                contract.bid,
+                                contract.ask,
+                                contract.last,
+                                contract.mark,
+                            ),
+                        )
+                return int(chain_id)
 
     def latest_chain_capture(self, ticker: str) -> PersistedChainCapture | None:
-        row = self.connection.execute(
-            """
-            SELECT id
-            FROM chain_captures
-            WHERE ticker = %s AND status IN ('success', 'partial')
-            ORDER BY chain_captured_at DESC, id DESC
-            LIMIT 1
-            """,
-            (ticker.upper(),),
-        ).fetchone()
-        if row is None:
-            return None
-        return self.load_chain_capture(int(row[0]))
+        with self.checkout() as conn:
+            row = conn.execute(
+                """
+                SELECT id
+                FROM chain_captures
+                WHERE ticker = %s AND status IN ('success', 'partial')
+                ORDER BY chain_captured_at DESC, id DESC
+                LIMIT 1
+                """,
+                (ticker.upper(),),
+            ).fetchone()
+            if row is None:
+                return None
+            return self._load_chain_capture(conn, int(row[0]))
 
     def load_chain_capture(self, chain_capture_id: int) -> PersistedChainCapture:
-        chain = self.connection.execute(
+        with self.checkout() as conn:
+            return self._load_chain_capture(conn, chain_capture_id)
+
+    def _load_chain_capture(self, conn, chain_capture_id: int) -> PersistedChainCapture:
+        chain = conn.execute(
             """
             SELECT id, ticker, source, status, min_dte, max_dte, requested_expirations,
                    chain_captured_at, provider_received_at, warnings
@@ -257,7 +325,7 @@ class PostgresRepository:
         if chain is None:
             raise KeyError(f"chain capture {chain_capture_id} not found")
 
-        expiration_rows = self.connection.execute(
+        expiration_rows = conn.execute(
             """
             SELECT id, expiration_date, underlying_close_at, option_last_trade_at,
                    status, provider_observed_at, error_message
@@ -270,7 +338,7 @@ class PostgresRepository:
 
         expirations: list[ExpirationCapture] = []
         for expiration in expiration_rows:
-            contracts = self.connection.execute(
+            contracts = conn.execute(
                 """
                 SELECT option_symbol, strike, option_type, open_interest, volume,
                        implied_volatility, iv_observed_at, oi_observed_date,
@@ -332,25 +400,26 @@ class PostgresRepository:
         return PersistedChainCapture(id=int(chain[0]), capture=capture)
 
     def save_spot_observation(self, spot: SpotQuote, source: str) -> int:
-        with self.connection.transaction():
-            return int(
-                self.connection.execute(
-                    """
-                    INSERT INTO spot_observations(
-                      ticker, spot_price, source, spot_observed_at, provider_received_at
-                    )
-                    VALUES (%s, %s, %s, %s, %s)
-                    RETURNING id
-                    """,
-                    (
-                        spot.ticker,
-                        spot.spot_price,
-                        source,
-                        spot.spot_observed_at,
-                        spot.provider_received_at,
-                    ),
-                ).fetchone()[0]
-            )
+        with self.checkout() as conn:
+            with conn.transaction():
+                return int(
+                    conn.execute(
+                        """
+                        INSERT INTO spot_observations(
+                          ticker, spot_price, source, spot_observed_at, provider_received_at
+                        )
+                        VALUES (%s, %s, %s, %s, %s)
+                        RETURNING id
+                        """,
+                        (
+                            spot.ticker,
+                            spot.spot_price,
+                            source,
+                            spot.spot_observed_at,
+                            spot.provider_received_at,
+                        ),
+                    ).fetchone()[0]
+                )
 
     def save_analysis_run(
         self,
@@ -407,78 +476,81 @@ class PostgresRepository:
             list(warnings),
             idempotency_key,
         )
-        with self.connection.transaction():
-            if idempotency_key is None:
-                row = self.connection.execute(
-                    f"""
-                    {insert_sql}
-                    RETURNING id, true AS inserted
-                    """,
-                    params,
-                ).fetchone()
-            else:
-                row = self.connection.execute(
-                    f"""
-                    WITH inserted AS (
-                    {insert_sql}
-                    ON CONFLICT (idempotency_key) DO NOTHING
-                    RETURNING id
-                    )
-                    SELECT id, true AS inserted FROM inserted
-                    UNION ALL
-                    SELECT id, false AS inserted
-                    FROM analysis_runs
-                    WHERE idempotency_key = %s
-                    LIMIT 1
-                    """,
-                    params + (idempotency_key,),
-                ).fetchone()
-            run_id = int(row[0])
-            was_inserted = bool(row[1]) if len(row) > 1 else True
-            if persist_strike_rows and was_inserted:
-                self._insert_strike_rows(run_id, result.rows.values())
-            return int(run_id)
+        with self.checkout() as conn:
+            with conn.transaction():
+                if idempotency_key is None:
+                    row = conn.execute(
+                        f"""
+                        {insert_sql}
+                        RETURNING id, true AS inserted
+                        """,
+                        params,
+                    ).fetchone()
+                else:
+                    # Concurrency-safe upsert: the no-op DO UPDATE guarantees a row is
+                    # always returned (even on conflict), and ``xmax = 0`` distinguishes a
+                    # freshly-inserted row from an existing one. This never returns None
+                    # for a valid idempotency key and never creates a duplicate run.
+                    row = conn.execute(
+                        f"""
+                        {insert_sql}
+                        ON CONFLICT (idempotency_key)
+                        DO UPDATE SET idempotency_key = EXCLUDED.idempotency_key
+                        RETURNING id, (xmax = 0) AS inserted
+                        """,
+                        params,
+                    ).fetchone()
+                if row is None:
+                    raise RuntimeError("analysis run insert returned no row")
+                run_id = int(row[0])
+                was_inserted = bool(row[1]) if len(row) > 1 else True
+                if persist_strike_rows and was_inserted:
+                    self._insert_strike_rows(conn, run_id, result.rows.values())
+                return int(run_id)
 
     def persist_analysis_run_rows(self, run_id: int) -> PersistedAnalysisRun:
         persisted = self.load_analysis_run(run_id)
         result = analyze_gex_proxy(persisted.input_data)
-        with self.connection.transaction():
-            self.connection.execute("DELETE FROM strike_gex_proxy WHERE analysis_run_id = %s", (run_id,))
-            self._insert_strike_rows(run_id, result.rows.values())
-            self.connection.execute(
-                "UPDATE analysis_runs SET persist_strike_rows = true WHERE id = %s",
-                (run_id,),
-            )
+        with self.checkout() as conn:
+            with conn.transaction():
+                conn.execute("DELETE FROM strike_gex_proxy WHERE analysis_run_id = %s", (run_id,))
+                self._insert_strike_rows(conn, run_id, result.rows.values())
+                conn.execute(
+                    "UPDATE analysis_runs SET persist_strike_rows = true WHERE id = %s",
+                    (run_id,),
+                )
         return self.load_analysis_run(run_id)
 
     def latest_analysis_run(self, ticker: str, scope: str) -> PersistedAnalysisRun | None:
-        row = self.connection.execute(
-            """
-            SELECT id
-            FROM analysis_runs
-            WHERE ticker = %s AND scope = %s
-            ORDER BY analyzed_at DESC, id DESC
-            LIMIT 1
-            """,
-            (ticker.upper(), scope),
-        ).fetchone()
-        if row is None:
-            return None
-        return self.load_analysis_run(int(row[0]))
+        with self.checkout() as conn:
+            row = conn.execute(
+                """
+                SELECT id
+                FROM analysis_runs
+                WHERE ticker = %s AND scope = %s
+                ORDER BY analyzed_at DESC, id DESC
+                LIMIT 1
+                """,
+                (ticker.upper(), scope),
+            ).fetchone()
+            if row is None:
+                return None
+            return self._load_analysis_run(conn, int(row[0]))
 
     def analysis_run_by_idempotency_key(self, idempotency_key: str) -> PersistedAnalysisRun | None:
-        row = self.connection.execute(
-            """
-            SELECT id
-            FROM analysis_runs
-            WHERE idempotency_key = %s
-            LIMIT 1
-            """,
-            (idempotency_key,),
-        ).fetchone()
-        if row is None:
-            return None
-        return self.load_analysis_run(int(row[0]))
+        with self.checkout() as conn:
+            row = conn.execute(
+                """
+                SELECT id
+                FROM analysis_runs
+                WHERE idempotency_key = %s
+                LIMIT 1
+                """,
+                (idempotency_key,),
+            ).fetchone()
+            if row is None:
+                return None
+            return self._load_analysis_run(conn, int(row[0]))
 
     def history_runs(
         self,
@@ -487,34 +559,39 @@ class PostgresRepository:
         date_filter: date | None = None,
         limit: int = 2000,
     ) -> list[PersistedAnalysisRun]:
-        if date_filter is None:
-            rows = self.connection.execute(
-                """
-                SELECT id
-                FROM analysis_runs
-                WHERE ticker = %s AND scope = %s
-                ORDER BY analyzed_at ASC, id ASC
-                LIMIT %s
-                """,
-                (ticker.upper(), scope, limit),
-            ).fetchall()
-        else:
-            rows = self.connection.execute(
-                """
-                SELECT id
-                FROM analysis_runs
-                WHERE ticker = %s
-                  AND scope = %s
-                  AND (analyzed_at AT TIME ZONE 'America/New_York')::date = %s
-                ORDER BY analyzed_at ASC, id ASC
-                LIMIT %s
-                """,
-                (ticker.upper(), scope, date_filter, limit),
-            ).fetchall()
-        return [self.load_analysis_run(int(row[0])) for row in rows]
+        with self.checkout() as conn:
+            if date_filter is None:
+                rows = conn.execute(
+                    """
+                    SELECT id
+                    FROM analysis_runs
+                    WHERE ticker = %s AND scope = %s
+                    ORDER BY analyzed_at ASC, id ASC
+                    LIMIT %s
+                    """,
+                    (ticker.upper(), scope, limit),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT id
+                    FROM analysis_runs
+                    WHERE ticker = %s
+                      AND scope = %s
+                      AND (analyzed_at AT TIME ZONE 'America/New_York')::date = %s
+                    ORDER BY analyzed_at ASC, id ASC
+                    LIMIT %s
+                    """,
+                    (ticker.upper(), scope, date_filter, limit),
+                ).fetchall()
+            return [self._load_analysis_run(conn, int(row[0])) for row in rows]
 
     def load_analysis_run(self, run_id: int) -> PersistedAnalysisRun:
-        row = self.connection.execute(
+        with self.checkout() as conn:
+            return self._load_analysis_run(conn, run_id)
+
+    def _load_analysis_run(self, conn, run_id: int) -> PersistedAnalysisRun:
+        row = conn.execute(
             """
             SELECT id, chain_capture_id, spot_observation_id, ticker, scope, analyzed_at,
                    pricing_model, model_version, calendar_version, option_close_policy_version,
@@ -529,7 +606,7 @@ class PostgresRepository:
         ).fetchone()
         if row is None:
             raise KeyError(f"analysis run {run_id} not found")
-        spot_row = self.connection.execute(
+        spot_row = conn.execute(
             """
             SELECT ticker, spot_price, source, spot_observed_at, provider_received_at
             FROM spot_observations
@@ -537,7 +614,7 @@ class PostgresRepository:
             """,
             (row[2],),
         ).fetchone()
-        capture = self.load_chain_capture(int(row[1]))
+        capture = self._load_chain_capture(conn, int(row[1]))
         spot = SpotQuote(
             ticker=spot_row[0],
             spot_price=_float(spot_row[1]),
@@ -571,7 +648,7 @@ class PostgresRepository:
             dividend_yield_source=row[14],
         )
         recalculated = analyze_gex_proxy(input_data)
-        rows = self._load_strike_rows(int(row[0])) if row[15] else recalculated.rows
+        rows = self._load_strike_rows(conn, int(row[0])) if row[15] else recalculated.rows
         result = AnalysisResult(
             rows=rows,
             net_gex_proxy=_float(row[18]),
@@ -594,8 +671,8 @@ class PostgresRepository:
             result=result,
         )
 
-    def _load_strike_rows(self, run_id: int) -> dict[float, StrikeGexProxyRow]:
-        rows = self.connection.execute(
+    def _load_strike_rows(self, conn, run_id: int) -> dict[float, StrikeGexProxyRow]:
+        rows = conn.execute(
             """
             SELECT strike, call_gex_proxy, put_gex_proxy, net_gex_proxy,
                    call_oi, put_oi, call_volume, put_volume
@@ -619,9 +696,9 @@ class PostgresRepository:
             for row in rows
         }
 
-    def _insert_strike_rows(self, run_id: int, rows) -> None:
+    def _insert_strike_rows(self, conn, run_id: int, rows) -> None:
         for row in rows:
-            self.connection.execute(
+            conn.execute(
                 """
                 INSERT INTO strike_gex_proxy(
                   analysis_run_id, strike, call_gex_proxy, put_gex_proxy,

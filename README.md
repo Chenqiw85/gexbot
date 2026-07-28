@@ -23,28 +23,85 @@ The dashboard reports **GEX proxy** values under a documented `call-positive / p
 - Explicit replay checkpoints that persist strike-level rows on demand.
 - Market status endpoint reports separate underlying and option session state; SPY/QQQ options remain open until the ETF option last-trade timestamp while the underlying session closes at 16:00 ET.
 
-## Run
+## Direct-Use Setup
+
+This is a single-user, private application. By default every published port binds
+to `127.0.0.1` only, so the stack is reachable from your machine but not the LAN
+or the public internet. See [Security & Exposure Model](#security--exposure-model)
+before changing that.
+
+### 1. Configure
 
 ```bash
 cp .env.example .env
-docker compose up --build
 ```
 
-Open:
-
-- Web: http://localhost:3000
-- API: http://localhost:8000/health
-
-## Tradier
-
-Set:
+Edit `.env`. For a first run you can keep the defaults (mock provider). To use
+real data, set:
 
 ```bash
 GEXBOT_PROVIDER=tradier
-TRADIER_TOKEN=your_token
+TRADIER_TOKEN=your_token          # required for tradier; never commit it
+TRADIER_BASE_URL=https://api.tradier.com/v1   # or the sandbox URL
 ```
 
-`GEXBOT_PROVIDER` is validated at startup and only accepts `mock` or `tradier`; typos fail fast instead of silently running mock data. `TRADIER_TOKEN` is required when `GEXBOT_PROVIDER=tradier`, and an empty or whitespace-only token fails startup.
+### 2. Start
+
+```bash
+docker compose up --build -d
+```
+
+This starts `postgres` (internal only), `api`, `scheduler`, and `web`.
+
+### 3. Open the dashboard
+
+- Dashboard (web UI): **http://localhost:3000**
+- API liveness: http://localhost:8000/health
+- API readiness (checks DB + provider config, no provider calls): http://localhost:8000/ready
+
+### 4. Use it
+
+`SPY` and `QQQ` are seeded and enabled at startup. From the dashboard you can
+register/enable another ticker, or via the API:
+
+```bash
+API=http://127.0.0.1:8000
+
+# 5. Register or enable a ticker (SPY/QQQ already seeded)
+curl -X POST $API/api/v1/tickers -H 'Content-Type: application/json' -d '{"ticker":"SPY"}'
+
+# 6. Trigger a capture
+curl -X POST $API/api/v1/chains/capture -H 'Content-Type: application/json' \
+  -d '{"ticker":"SPY","min_dte":0,"max_dte":7}'
+
+# 7. Confirm a GEX proxy analysis run was created
+curl -X POST $API/api/v1/gex-proxy/analyze -H 'Content-Type: application/json' \
+  -d '{"ticker":"SPY","scope":"all","persist_strike_rows":false}'
+# -> returns a run with id, net_gex_proxy, zero_gamma_proxy, call/put wall proxies
+
+# 8. Verify scheduler status and recent captures
+docker compose logs --tail=50 scheduler
+curl "$API/api/v1/gex-proxy/latest?ticker=SPY&scope=all"
+```
+
+> Outside NYSE trading hours the scheduler intentionally does not capture or
+> analyze (see [Expected behavior outside market hours](#expected-behavior-outside-market-hours)).
+> Use the manual `capture`/`analyze` calls above (with `allow_chain_capture=true`
+> for the first bootstrap analysis) to exercise the pipeline any time — in mock
+> mode this always works.
+
+## Provider Modes
+
+`GEXBOT_PROVIDER` is validated at startup and only accepts `mock` or `tradier`;
+typos fail fast instead of silently running mock data.
+
+- **Mock mode** (`GEXBOT_PROVIDER=mock`, the default): synthetic option data for
+  local development and demos. No token required. Works any time of day.
+- **Tradier mode** (`GEXBOT_PROVIDER=tradier`): real market data. `TRADIER_TOKEN`
+  is **required**; an empty or whitespace-only token fails startup with a clear
+  error and the token is never logged. Provider/config errors surface through the
+  structured API error envelope. Before enabling Tradier in the scheduler, run the
+  live smoke test (below).
 
 The system uses low-frequency chain capture and high-frequency spot recalculation. During scheduled refreshes, each ticker fetches one spot quote per spot-refresh bucket and reuses that observation for both `all` and `0dte` local recalculations. Spot/local GEX proxy analysis runs until the ticker's `option_last_trade_at`, so SPY/QQQ continue through the 16:00-16:15 ET ETF option window. Tradier quote `trade_date` is stored as `spot_observed_at` when present on a live last-price quote. If Tradier does not provide IV/OI, contract multiplier, or spot observation time, those fields remain `null`; provider receive time is tracked and displayed separately. If every captured contract is excluded from GEX proxy math because required inputs are missing, invalid, or expired, analysis warnings include `all_contracts_excluded`.
 
@@ -84,11 +141,158 @@ GEXBOT_PROVIDER=tradier TRADIER_TOKEN=your_token .venv/bin/python -m app.provide
 The smoke command exits non-zero if Tradier provides no positive spot price or if IV, open interest, or contract multiplier are completely absent from the sampled contracts.
 The smoke ticker uses the same local validation as the API and scheduler, so invalid symbols fail before any provider request is sent.
 
-## Backend Tests
+## Security & Exposure Model
+
+This app has **no user accounts** and is designed for private, single-user
+self-hosting. Its primary protection is network binding, not authentication.
+
+- **Localhost-only by default.** Compose publishes the API and web ports on
+  `127.0.0.1` (via `GEXBOT_BIND_HOST`, default `127.0.0.1`). PostgreSQL is not
+  published to the host at all — it is only reachable on the internal Docker
+  network by `api`/`scheduler`.
+- **Changing the binding deliberately.** To reach the dashboard from another
+  device (LAN, Tailscale/VPN, or behind a reverse proxy), set `GEXBOT_BIND_HOST`
+  in `.env`:
+  - Tailscale/VPN: bind to your tailnet/VPN interface IP (e.g. `GEXBOT_BIND_HOST=100.x.y.z`).
+  - LAN: your host's LAN IP.
+  - Reverse proxy on the same host: keep `127.0.0.1` and point the proxy at it.
+  - `0.0.0.0` exposes the app on **all** interfaces — do this only behind a
+    firewall/VPN/authenticating reverse proxy.
+- **Public exposure requires authentication and rate limiting** that this app
+  does not provide on its own. Put it behind an authenticating reverse proxy (or
+  a VPN) before exposing it beyond localhost. When `GEXBOT_BIND_HOST` is not a
+  localhost address and no API key is set, the app logs a warning at startup.
+- **Optional API key (`GEXBOT_API_KEY`).** When unset (default), localhost use
+  needs no auth. When set, mutating endpoints (`POST`/`PATCH`/`PUT`/`DELETE`)
+  require a matching `X-API-Key` header. **Limitation:** the bundled browser
+  frontend does not send this header (doing so securely would require a
+  server-side proxy, which is out of scope for this single-user build), so
+  enabling `GEXBOT_API_KEY` is intended for API-only or reverse-proxy
+  deployments, not for use with the bundled web UI. Keep localhost binding as the
+  primary protection.
+- **Application-level safeguards** apply regardless of the key: capture/analyze
+  requests must target a registered, enabled ticker (unknown/disabled tickers are
+  rejected with `404 ticker_not_enabled` before any provider call), ticker format
+  and length are validated (1–12 chars, letters/digits/dot/hyphen), and DTE
+  ranges/payloads are bounded.
+
+## Database, Connection Pool & Backups
+
+- **Connection pool.** The backend uses a `psycopg_pool.ConnectionPool`; each
+  repository operation (and each scheduler lease attempt) checks out its own
+  connection, so no connection is shared across request threads. Multi-statement
+  operations run inside a single `connection.transaction()` on one connection.
+  Sizing is configurable:
+  - `DB_POOL_MIN_SIZE` (default `1`)
+  - `DB_POOL_MAX_SIZE` (default `5`)
+  - `DB_POOL_TIMEOUT_SECONDS` (default `10`)
+  The API and scheduler are separate processes and each own an independent pool.
+  The pool is opened at startup and closed cleanly on shutdown.
+- **Data location / backups.** PostgreSQL data lives in the named Docker volume
+  `postgres_data`. Back it up with, e.g.:
+  ```bash
+  docker compose exec -T postgres pg_dump -U gexbot gexbot > gexbot-backup.sql
+  # restore:
+  docker compose exec -T postgres psql -U gexbot -d gexbot < gexbot-backup.sql
+  ```
+  `docker compose down` keeps the volume; `docker compose down -v` **deletes** it.
+
+## Operations
+
+```bash
+# Stop (keeps data volume)
+docker compose stop
+# Start again
+docker compose up -d
+# Full teardown, KEEP data
+docker compose down
+# Full teardown, DELETE data
+docker compose down -v
+
+# Inspect logs
+docker compose logs --tail=100 api
+docker compose logs --tail=100 scheduler
+docker compose logs -f web
+```
+
+The scheduler handles `SIGTERM`/`SIGINT` for graceful shutdown (it finishes the
+current tick, then closes its pool), so `docker compose stop`/`restart` are safe.
+One failed ticker or provider error in a polling cycle is logged and throttled;
+it does not terminate the cycle or the scheduler.
+
+## Tests
+
+Backend tests use `unittest`. Create a virtualenv and install the backend
+package (which now includes `psycopg_pool`):
 
 ```bash
 cd backend
-.venv/bin/python -m unittest discover -s tests
+python3.12 -m venv .venv
+.venv/bin/pip install -e . pytest
+.venv/bin/python -m unittest discover -s tests      # unit + API + in-memory concurrency
+.venv/bin/python -m compileall -q app tests
 ```
 
-See [docs/testing.md](docs/testing.md) for the full verification gate and [docs/deployment.md](docs/deployment.md) for Docker and Tradier deployment notes.
+Real-PostgreSQL concurrency tests (connection isolation, same-key idempotency
+race, scheduler-lease vs manual-analysis concurrency) are **skipped unless**
+`GEXBOT_TEST_DATABASE_URL` is set. To run them against a throwaway database:
+
+```bash
+docker run -d --name gexbot-test-pg -e POSTGRES_USER=gexbot \
+  -e POSTGRES_PASSWORD=gexbot -e POSTGRES_DB=gexbot -p 55432:5432 postgres:16
+GEXBOT_TEST_DATABASE_URL=postgresql://gexbot:gexbot@127.0.0.1:55432/gexbot \
+  .venv/bin/python -m unittest discover -s tests
+docker rm -f gexbot-test-pg
+```
+
+Frontend:
+
+```bash
+cd frontend
+npm ci
+npm run typecheck
+npm run test:runtime
+npm run build
+```
+
+See [docs/testing.md](docs/testing.md) for the full verification gate.
+
+## Known Limitations
+
+### GEX proxy assumptions
+
+The dashboard reports a **GEX proxy**, not measured dealer positioning. It
+assumes a fixed `call-positive / put-negative` position sign, uses a local
+Black-Scholes gamma from a configured flat risk-free rate and dividend yield, and
+weights by open interest. It does not know actual dealer inventory, hedging flow,
+or customer-vs-dealer sign. `zero_gamma_proxy`, `call_wall_proxy`, and
+`put_wall_proxy` are derived from that proxy and are decision-support heuristics,
+not guarantees. There are no trading signals, order placement, or brokerage
+integration, and none are intended.
+
+### Complete vs partial captures
+
+A **complete** (`success`) capture is one where every requested/selected
+expiration returned data. A **partial** capture is one where at least one
+expiration succeeded and at least one failed; it remains usable and is analyzed,
+but analysis carries `partial_capture` and `analysis_uses_partial_capture`
+warnings that persist through latest/history/run-detail/recompute. A capture
+where every expiration fails, or where the DTE window selects no expirations, is
+`failed` (`capture_failed` / `no_expirations_selected`) and is not stored as a
+usable empty success. Missing provider fields (IV, OI, contract multiplier, spot
+observed time) are kept as `null` rather than fabricated; contracts missing
+inputs required for the math are excluded with explicit reasons.
+
+### Expected behavior outside market hours
+
+The scheduler only captures chains and runs spot analysis during the option
+session — from the session open until `option_last_trade_at` (16:15 ET for
+SPY/QQQ, 16:00 ET for standard single-name tickers), on NYSE trading days per the
+versioned holiday/early-close calendar. Outside that window the scheduler pauses,
+`GET /api/v1/gex-proxy/latest` keeps returning the last stored run, and the
+dashboard polls market status every 60s so it detects the next open. Manual
+`capture`/`analyze` API calls still work at any time (use them, or mock mode, to
+exercise the pipeline off-hours).
+
+See [docs/deployment.md](docs/deployment.md) for Docker, scheduler, and Tradier
+deployment details.

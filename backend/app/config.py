@@ -26,6 +26,11 @@ class Settings:
     database_url: str | None
     cors_origins: tuple[str, ...]
     auto_ensure_schema: bool
+    db_pool_min_size: int = 1
+    db_pool_max_size: int = 5
+    db_pool_timeout_seconds: float = 10.0
+    api_key: str | None = None
+    bind_host: str = "127.0.0.1"
 
 
 def get_settings() -> Settings:
@@ -38,6 +43,12 @@ def get_settings() -> Settings:
     default_max_dte = _non_negative_int("DEFAULT_MAX_DTE", "45")
     if default_min_dte > default_max_dte:
         raise ValueError("DEFAULT_MIN_DTE must be less than or equal to DEFAULT_MAX_DTE")
+
+    db_pool_min_size = _non_negative_int("DB_POOL_MIN_SIZE", "1")
+    db_pool_max_size = _positive_int("DB_POOL_MAX_SIZE", "5")
+    if db_pool_min_size > db_pool_max_size:
+        raise ValueError("DB_POOL_MIN_SIZE must be less than or equal to DB_POOL_MAX_SIZE")
+    db_pool_timeout_seconds = _positive_float("DB_POOL_TIMEOUT_SECONDS", "10")
 
     return Settings(
         provider=provider,
@@ -54,6 +65,11 @@ def get_settings() -> Settings:
         database_url=os.getenv("DATABASE_URL"),
         cors_origins=_csv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000"),
         auto_ensure_schema=_bool("AUTO_ENSURE_SCHEMA", "true"),
+        db_pool_min_size=db_pool_min_size,
+        db_pool_max_size=db_pool_max_size,
+        db_pool_timeout_seconds=db_pool_timeout_seconds,
+        api_key=_optional_string("GEXBOT_API_KEY"),
+        bind_host=os.getenv("GEXBOT_BIND_HOST", "127.0.0.1").strip() or "127.0.0.1",
     )
 
 
@@ -108,6 +124,13 @@ def _unit_float(name: str, default: str) -> float:
 
 def _positive_int(name: str, default: str) -> int:
     value = _int(name, default)
+    if value <= 0:
+        raise ValueError(f"{name} must be positive")
+    return value
+
+
+def _positive_float(name: str, default: str) -> float:
+    value = _finite_float(name, default)
     if value <= 0:
         raise ValueError(f"{name} must be positive")
     return value

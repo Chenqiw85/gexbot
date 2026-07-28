@@ -10,6 +10,23 @@ cd backend
 .venv/bin/python -m compileall -q app tests
 ```
 
+The backend package depends on `psycopg_pool` (installed with the package). The
+in-memory concurrency tests and the reliability tests run without a database.
+
+### Real-PostgreSQL concurrency tests
+
+Connection-isolation, same-key idempotency race, and scheduler-lease-vs-manual-analysis
+tests live in `tests/test_db_concurrency.py` and are skipped unless
+`GEXBOT_TEST_DATABASE_URL` is set:
+
+```bash
+docker run -d --name gexbot-test-pg -e POSTGRES_USER=gexbot \
+  -e POSTGRES_PASSWORD=gexbot -e POSTGRES_DB=gexbot -p 55432:5432 postgres:16
+GEXBOT_TEST_DATABASE_URL=postgresql://gexbot:gexbot@127.0.0.1:55432/gexbot \
+  .venv/bin/python -m unittest discover -s tests
+docker rm -f gexbot-test-pg
+```
+
 The unittest suite includes:
 
 - GEX proxy math and expiry behavior.

@@ -1,0 +1,5 @@
+[ 8100132ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8000/api/v1/market/status?ticker=SPY:0
+[ 8220136ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8000/api/v1/market/status?ticker=SPY:0
+[ 8280131ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8000/api/v1/market/status?ticker=SPY:0
+[ 8340134ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8000/api/v1/market/status?ticker=SPY:0
+[ 8400137ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8000/api/v1/market/status?ticker=SPY:0

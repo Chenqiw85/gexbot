@@ -1,28 +1,47 @@
 from __future__ import annotations
 
+import logging
+import os
+import secrets
+from contextlib import asynccontextmanager
 from datetime import date, datetime, timezone
 from typing import Literal
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from app.config import get_settings
+from app.config import Settings, get_settings
 from app.domain.calendar import NY, MarketCalendar, build_expiration_times, policy_for_ticker
 from app.domain.ticker import normalize_ticker
 from app.api.serializers import serialize_capture, serialize_run
 from app.providers.base import ProviderError
 from app.providers.http import HttpRequestError, RateLimitExceeded
 from app.services.capture import ChainCaptureRequest
-from app.services.orchestrator import RuntimeState, runtime_run_to_stored
+from app.services.orchestrator import RuntimeState, TickerNotEnabledError, runtime_run_to_stored
 from app.services.history import UnsupportedModelVersion, recompute_from_record
+
+
+logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
+logger = logging.getLogger("gexbot.api")
+
+_MUTATING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 
 
 def create_app(runtime_state: RuntimeState | None = None) -> FastAPI:
     settings = get_settings()
-    app = FastAPI(title="GEX Proxy Bot API", version="0.1.0")
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        _log_startup(app.state.runtime_state)
+        try:
+            yield
+        finally:
+            app.state.runtime_state.close()
+
+    app = FastAPI(title="GEX Proxy Bot API", version="0.1.0", lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(settings.cors_origins),
@@ -32,9 +51,59 @@ def create_app(runtime_state: RuntimeState | None = None) -> FastAPI:
     )
     app.state.runtime_state = runtime_state or RuntimeState(settings=settings)
 
+    @app.middleware("http")
+    async def api_key_guard(request: Request, call_next):
+        api_key = app.state.runtime_state.settings.api_key
+        if api_key and request.method in _MUTATING_METHODS:
+            provided = request.headers.get("x-api-key", "")
+            if not secrets.compare_digest(provided, api_key):
+                return JSONResponse(
+                    status_code=401,
+                    content={
+                        "error": {
+                            "code": "unauthorized",
+                            "message": "missing or invalid API key",
+                        }
+                    },
+                )
+        return await call_next(request)
+
     @app.get("/health")
     def health():
+        """Liveness: process is up. Does not touch the database or provider."""
         return {"ok": True}
+
+    @app.get("/ready")
+    def ready():
+        """Readiness: required dependencies are usable, without provider calls."""
+        state = _state(app)
+        checks = {
+            "storage": "postgres" if state.repository else "in-memory",
+            "provider": state.settings.provider,
+            "provider_configured": _provider_configured(state.settings),
+        }
+        if state.repository is not None:
+            try:
+                with state.repository.checkout() as conn:
+                    conn.execute("SELECT 1")
+            except Exception as exc:  # pragma: no cover - exercised via integration
+                logger.warning("readiness database check failed: %s", type(exc).__name__)
+                return JSONResponse(
+                    status_code=503,
+                    content={
+                        "error": {"code": "not_ready", "message": "database is unavailable"},
+                        "checks": checks,
+                    },
+                )
+        if not checks["provider_configured"]:
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "error": {"code": "not_ready", "message": "provider is not fully configured"},
+                    "checks": checks,
+                },
+            )
+        return {"ok": True, "checks": checks}
 
     @app.get("/api/v1/tickers")
     def list_tickers():
@@ -260,6 +329,13 @@ def create_app(runtime_state: RuntimeState | None = None) -> FastAPI:
             return _error_response(404, code="not_found", message=str(exc.detail))
         return _error_response(exc.status_code, code="http_error", message=str(exc.detail))
 
+    @app.exception_handler(TickerNotEnabledError)
+    def ticker_not_enabled_handler(_, exc: Exception):
+        return JSONResponse(
+            status_code=404,
+            content={"error": {"code": "ticker_not_enabled", "message": str(exc)}},
+        )
+
     @app.exception_handler(ProviderError)
     def provider_error_handler(_, exc: Exception):
         return JSONResponse(
@@ -286,6 +362,36 @@ def create_app(runtime_state: RuntimeState | None = None) -> FastAPI:
 
 def _state(app: FastAPI) -> RuntimeState:
     return app.state.runtime_state
+
+
+def _provider_configured(settings: Settings) -> bool:
+    if settings.provider == "tradier":
+        return bool(settings.tradier_token) and bool(settings.tradier_base_url)
+    return True
+
+
+def _log_startup(state: RuntimeState) -> None:
+    """Log non-secret startup readiness context (never the token)."""
+    settings = state.settings
+    logger.info(
+        "gexbot api startup storage=%s provider=%s provider_configured=%s tradier_base_url=%s",
+        "postgres" if state.repository else "in-memory",
+        settings.provider,
+        _provider_configured(settings),
+        settings.tradier_base_url if settings.provider == "tradier" else "n/a",
+    )
+    if not state.repository:
+        logger.warning(
+            "running WITHOUT PostgreSQL (in-memory mode): data is not durable and is for "
+            "local development/testing only. Set DATABASE_URL for persistent storage."
+        )
+    if settings.bind_host not in {"127.0.0.1", "localhost", "::1"} and not settings.api_key:
+        logger.warning(
+            "GEXBOT_BIND_HOST=%s is not localhost and GEXBOT_API_KEY is unset: mutating "
+            "endpoints are unauthenticated. Only expose beyond localhost behind a VPN/"
+            "reverse proxy with authentication.",
+            settings.bind_host,
+        )
 
 
 def _normalize_query_ticker(value: str) -> str:

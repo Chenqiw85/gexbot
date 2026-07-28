@@ -12,13 +12,58 @@ NY = ZoneInfo("America/New_York")
 
 
 class RepositoryConnectionTest(unittest.TestCase):
-    def test_connect_enables_autocommit_for_cross_process_visibility(self):
-        connection = object()
-        with patch("app.db.repository.psycopg.connect", return_value=connection) as connect:
-            repository = PostgresRepository.connect("postgresql://example")
+    def test_connect_builds_autocommit_pool_and_checks_out_per_operation(self):
+        pool = FakePool()
+        with patch("app.db.repository.build_pool", return_value=pool) as build:
+            repository = PostgresRepository.connect(
+                "postgresql://example",
+                min_size=2,
+                max_size=7,
+                timeout=4.0,
+            )
 
-        connect.assert_called_once_with("postgresql://example", autocommit=True)
-        self.assertIs(repository.connection, connection)
+        build.assert_called_once_with(
+            "postgresql://example",
+            min_size=2,
+            max_size=7,
+            timeout=4.0,
+        )
+        # Each unit of work checks a connection out of the pool rather than
+        # sharing one long-lived connection across threads.
+        with repository.checkout() as conn:
+            self.assertIs(conn, pool.connection_obj)
+        self.assertEqual(pool.checkouts, 1)
+        self.assertEqual(pool.returns, 1)
+
+        repository.close()
+        self.assertTrue(pool.closed)
+
+
+class FakePool:
+    def __init__(self):
+        self.connection_obj = object()
+        self.checkouts = 0
+        self.returns = 0
+        self.closed = False
+
+    def connection(self):
+        return _FakePoolCheckout(self)
+
+    def close(self):
+        self.closed = True
+
+
+class _FakePoolCheckout:
+    def __init__(self, pool):
+        self.pool = pool
+
+    def __enter__(self):
+        self.pool.checkouts += 1
+        return self.pool.connection_obj
+
+    def __exit__(self, exc_type, exc, tb):
+        self.pool.returns += 1
+        return False
 
 
 class RepositoryChainCaptureTest(unittest.TestCase):

@@ -5,8 +5,11 @@ services:
       POSTGRES_USER: gexbot
       POSTGRES_PASSWORD: gexbot
       POSTGRES_DB: gexbot
-    ports:
-      - "5432:5432"
+    # No published ports: PostgreSQL is reachable only on the internal Docker
+    # network by the api/scheduler services, never from the host or the public
+    # internet. Use `docker compose exec postgres psql ...` for admin access.
+    expose:
+      - "5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./backend/app/db/schema.sql:/docker-entrypoint-initdb.d/001-schema.sql:ro
@@ -30,10 +33,17 @@ services:
       DEFAULT_MIN_DTE: ${DEFAULT_MIN_DTE:-0}
       DEFAULT_MAX_DTE: ${DEFAULT_MAX_DTE:-45}
       DEFAULT_MAX_EXPIRATIONS: ${DEFAULT_MAX_EXPIRATIONS:-12}
+      DB_POOL_MIN_SIZE: ${DB_POOL_MIN_SIZE:-1}
+      DB_POOL_MAX_SIZE: ${DB_POOL_MAX_SIZE:-5}
+      DB_POOL_TIMEOUT_SECONDS: ${DB_POOL_TIMEOUT_SECONDS:-10}
+      GEXBOT_API_KEY: ${GEXBOT_API_KEY:-}
+      GEXBOT_BIND_HOST: ${GEXBOT_BIND_HOST:-127.0.0.1}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
       AUTO_ENSURE_SCHEMA: "false"
+    # Bind to localhost only by default. Override GEXBOT_BIND_HOST for LAN/VPN
+    # access (see README security section) — only behind authentication.
     ports:
-      - "8000:8000"
+      - "${GEXBOT_BIND_HOST:-127.0.0.1}:8000:8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -55,6 +65,9 @@ services:
       DEFAULT_MAX_EXPIRATIONS: ${DEFAULT_MAX_EXPIRATIONS:-12}
       CHAIN_REFRESH_SECONDS: ${CHAIN_REFRESH_SECONDS:-900}
       SPOT_REFRESH_SECONDS: ${SPOT_REFRESH_SECONDS:-15}
+      DB_POOL_MIN_SIZE: ${DB_POOL_MIN_SIZE:-1}
+      DB_POOL_MAX_SIZE: ${DB_POOL_MAX_SIZE:-5}
+      DB_POOL_TIMEOUT_SECONDS: ${DB_POOL_TIMEOUT_SECONDS:-10}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
       AUTO_ENSURE_SCHEMA: "false"
     depends_on:
@@ -65,9 +78,10 @@ services:
     build:
       context: ./frontend
     environment:
-      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
+    # Bind to localhost only by default (see README security section).
     ports:
-      - "3000:3000"
+      - "${GEXBOT_BIND_HOST:-127.0.0.1}:3000:3000"
     depends_on:
       - api
 

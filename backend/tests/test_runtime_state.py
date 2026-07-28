@@ -38,7 +38,7 @@ class FakeRepository:
     ensure_calls = 0
 
     @classmethod
-    def connect(cls, database_url):
+    def connect(cls, database_url, **kwargs):
         return cls()
 
     def ensure_schema(self):

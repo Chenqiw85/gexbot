@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 import logging
 import os
+import signal
+import threading
 import time
 from uuid import uuid4
 
@@ -19,19 +21,48 @@ logger = logging.getLogger("gexbot.scheduler")
 ANALYSIS_SCOPES = ("all", "0dte")
 
 
-def run_forever() -> None:
+def run_forever(stop_event: threading.Event | None = None) -> None:
     settings = get_settings()
     owner_id = os.getenv("SCHEDULER_OWNER_ID", f"scheduler-{uuid4()}")
+    stop = stop_event or _install_signal_handlers()
     state = RuntimeState(settings=settings)
     locks = _make_lock_store(state)
     last_chain: dict[str, float] = {}
     last_spot: dict[str, float] = {}
 
-    logger.info("scheduler started owner_id=%s provider=%s", owner_id, settings.provider)
-    while True:
-        now = datetime.now(timezone.utc)
-        _run_due_jobs_once(state, locks, owner_id, now, last_chain, last_spot)
-        time.sleep(1)
+    logger.info(
+        "scheduler started owner_id=%s provider=%s database=%s",
+        owner_id,
+        settings.provider,
+        "postgres" if state.repository else "in-memory",
+    )
+    try:
+        while not stop.is_set():
+            now = datetime.now(timezone.utc)
+            try:
+                _run_due_jobs_once(state, locks, owner_id, now, last_chain, last_spot)
+            except Exception:  # pragma: no cover - defensive: never let the loop die
+                logger.exception("scheduler cycle failed; continuing")
+            # Interruptible sleep so shutdown signals are handled promptly.
+            stop.wait(1)
+    finally:
+        logger.info("scheduler stopping owner_id=%s", owner_id)
+        state.close()
+
+
+def _install_signal_handlers() -> threading.Event:
+    stop = threading.Event()
+
+    def _request_stop(signum, _frame):
+        logger.info("scheduler received signal %s; requesting shutdown", signum)
+        stop.set()
+
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        try:
+            signal.signal(sig, _request_stop)
+        except ValueError:  # pragma: no cover - not on main thread
+            pass
+    return stop
 
 
 def _run_due_jobs_once(
@@ -148,7 +179,7 @@ def _run_spot_job_if_due(
 
 def _make_lock_store(state: RuntimeState):
     if state.repository:
-        return PostgresLeaseLockStore(state.repository.connection)
+        return PostgresLeaseLockStore(state.repository)
     return InMemoryLeaseLockStore()
 
 
